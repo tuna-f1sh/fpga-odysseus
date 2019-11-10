@@ -14,11 +14,11 @@ module top
 
 	font_rom vga_font(
 		.clk(clk_25mhz),
-		.addr({ 8'd77, y[3:0] }),
+		.addr({ 8'd76, y[3:0] }),
 		.data_out(data_out)
 	);
 
-	assign color = data_out[7-x[2:0]+1] ? 24'hffffff : 24'h000000; // +1 for sync
+	assign color = data_out[7] ? 24'h00ff00 : 24'h000000; // +1 for sync
 
 	hdmi_video hdmi_video
 	(

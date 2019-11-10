@@ -6,19 +6,32 @@ module top
   input wire ftdi_txd
 );
 	assign wifi_gpio0 = 1'b1;
+	//parameter [11:0] boot_pos = 0 /*x*/ + 0 /*y*/ * 80;
 
 	wire [23:0] color;
 	wire [9:0] x;
 	wire [9:0] y;
 
+  // framebuffer
   reg [7:0] mem [0:2400];
+  reg [7:0] boot [0:580];
+  reg [9:0] boot_char;
+  /* wire boot_up = !(boot_char & 10'd579); */
+  reg [1:0] boot_up;
 
   integer k;
 
   initial
   begin
-    for (k = 0; k < 2400; k = k + 1)
+    $readmemh("fpga-wt-220-boot.mem", boot);
+    for (k = 0; k < 2400; k = k + 1) begin
       mem[k] <= 32;
+      /* if (k >= boot_pos && k < boot_pos + 20) begin */
+      /*   mem[k] <= boot[k]; */
+      /* end else begin */
+      /*   mem[k] <= 32; */
+      /* end */
+    end
   end
 
 
@@ -40,6 +53,7 @@ module top
   );
 
   wire [11:0] pos;
+  // char cords to place next char
   reg [6:0] p_x;
   reg [4:0] p_y;
 
@@ -56,7 +70,7 @@ module top
   end
 
 
-  reg state;
+  reg [1:0] state;
 
   always @(posedge clk_25mhz) 
   begin
@@ -66,16 +80,24 @@ module top
           p_x <= 0;
           p_y <= 0;
           valid <= 0;
+          boot_char <= 0;
+          boot_up <= 1;
       end
       else
       begin
           case (state)
-              0: begin  // receiving char
+              2: begin  // receiving char
                   if (rx_valid) 
                   begin                
-                      valid <= 1;
-                      display_char <= uart_out;
-                      state <= 1;
+                      if (uart_out == 8'd13) begin// CR
+                        p_y <= p_y + 1;
+                      end else if (uart_out == 8'd10) begin
+                        p_x <= 0;
+                      end else begin
+                        valid <= 1;
+                        display_char <= uart_out;
+                        state <= 1;
+                      end
                   end
                   end
               1: begin  // display char
@@ -90,8 +112,23 @@ module top
                       p_x <= 0;
                   end
                   valid <= 0;
-                  state <= 0;
+                  state <= boot_up ? 0 : 2;
                   end
+              0: begin // print char buffer
+                if (boot[boot_char] == 8'd13) begin// CR
+                  p_y <= p_y + 1;
+                end else if (boot[boot_char] == 8'd10) begin
+                  p_y <= p_y + 1;
+                  p_x <= 0;
+                end else begin
+                  valid <= 1;
+                  display_char <= boot[boot_char];
+                  state <= 1;
+                end
+                boot_char <= boot_up ? boot_char + 1 : 0;
+                boot_up <= boot_char < 579 ? 1: 0;
+                /* boot_up <= boot_char < 579 ? 1 : 0; */
+              end
           endcase  
       end
   end
@@ -104,7 +141,7 @@ module top
       .data_out(data_out)
   );
 
-  assign color = data_out[7-x[2:0]+1] ? 24'hffffff : 24'h000000; // +1 for sync
+  assign color = data_out[7-x[2:0]+1] ? 24'h00ff00 : 24'h000000; // +1 for sync
 
 	hdmi_video hdmi_video
 	(
